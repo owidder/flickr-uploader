@@ -411,10 +411,7 @@ class Uploadr:
             relpath = dirpath[startindex:]
             parts = relpath.split('/')
 
-            setname = ""
-            for part in parts:
-                setname = setname + part + '-'
-
+            setname = "-".join(parts)
             if (setname.__len__() > 1) and (filenames.__len__() > 0):
                 created = False
                 for filename in filenames:
@@ -456,24 +453,6 @@ class Uploadr:
             print("   " + str(coun) + " files processed (uploaded or md5ed)")
         print("*****Completed uploading files*****")
         """
-
-    def grabNewFiles( self ):
-        """ grabNewFiles
-        """
-
-        files = []
-        for dirpath, dirnames, filenames in os.walk( FILES_DIR, followlinks=True):
-            for curr_dir in EXCLUDED_FOLDERS:
-                if curr_dir in dirnames:
-                    dirnames.remove(curr_dir)
-            for f in filenames :
-                ext = f.lower().split(".")[-1]
-                if ext in ALLOWED_EXT:
-                    fileSize = os.path.getsize( dirpath + "/" + f )
-                    if (fileSize < FILE_MAX_SIZE):
-                        files.append( os.path.normpath( dirpath + "/" + f ) )
-        files.sort()
-        return files
 
     def uploadFile( self, file ):
         """ uploadFile
