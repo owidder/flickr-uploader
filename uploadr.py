@@ -91,6 +91,8 @@ import itertools
 # Location to scan for new files
 #
 FILES_DIR = os.environ['FLICKR_UPLOADR_FILES_DIR']
+if not FILES_DIR.endswith('/'):
+    FILES_DIR = FILES_DIR + '/'
 
 #
 # Location to store the token
@@ -127,7 +129,7 @@ EXCLUDED_FOLDERS = ["@eaDir","#recycle",".picasaoriginals","_ExcludeSync","Corel
 #
 #   List of file extensions you agree to upload
 #
-ALLOWED_EXT = ["jpg","png","avi","mov","mpg","mp4"]
+ALLOWED_EXT = ["jpg","png"]
 #
 #   Files greater than this value won't be uploaded (1Mo = 1000000)
 #
@@ -399,6 +401,46 @@ class Uploadr:
 
         print("*****Uploading files*****")
 
+
+        for dirpath, dirnames, filenames in os.walk( FILES_DIR, followlinks=True):
+            if ('@' in dirpath) or ('_f-' in dirpath):
+                # print "--- Skipped: " + dirpath
+                continue
+
+            startindex = FILES_DIR.__len__()
+            relpath = dirpath[startindex:]
+            parts = relpath.split('/')
+
+            setname = ""
+            for part in parts:
+                setname = setname + part + '-'
+
+            if (setname.__len__() > 1) and (filenames.__len__() > 0):
+                created = False
+                for filename in filenames:
+                    ext = filename.lower().split(".")[-1]
+                    if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
+                        if not created:
+                            print "Create set: " + setname
+                            created = True
+
+                        print "Uplaod: " + dirpath + '/' + filename
+
+            print "*****************"
+
+            """
+            for curr_dir in EXCLUDED_FOLDERS:
+                if curr_dir in dirnames:
+                    dirnames.remove(curr_dir)
+            for f in filenames :
+                ext = f.lower().split(".")[-1]
+                if (not f.startswith("_f-")) and (not dirpath.startswith("_f-")) and (ext in ALLOWED_EXT):
+                    fileSize = os.path.getsize( dirpath + "/" + f )
+                    if (fileSize < FILE_MAX_SIZE):
+                        print(dirpath + "/" + f)
+            """
+
+        """
         allMedia = self.grabNewFiles()
         print("Found " + str(len(allMedia)) + " files")
         coun = 0;
@@ -413,6 +455,7 @@ class Uploadr:
         if (coun%100 > 0):
             print("   " + str(coun) + " files processed (uploaded or md5ed)")
         print("*****Completed uploading files*****")
+        """
 
     def grabNewFiles( self ):
         """ grabNewFiles
@@ -835,25 +878,6 @@ class Uploadr:
             print(str(sys.exc_info()))
         return False
 
-    # Method to clean unused sets
-    def removeUselessSetsTable( self ) :
-        print('*****Removing empty Sets from DB*****')
-
-        con = lite.connect(DB_PATH)
-        con.text_factory = str
-        with con:
-
-            cur = con.cursor()
-            cur.execute("SELECT set_id, name FROM sets WHERE set_id NOT IN (SELECT set_id FROM files)")
-            unusedsets = cur.fetchall()
-
-            for row in unusedsets:
-                print("Unused set spotted about to be deleted:" + str(row[0]) + "(" + row[1] + ")")
-                cur.execute("DELETE FROM sets WHERE set_id = ?", (row[0],))
-            con.commit()
-
-        print('*****Completed removing empty Sets from DB*****')
-
     # Display Sets
     def displaySets( self ) :
         con = lite.connect(DB_PATH)
@@ -939,13 +963,17 @@ if __name__ == "__main__":
         #flick.run()
         dummy = 1
     else:
+        """
         if ( not flick.checkToken() ):
             flick.authenticate()
-        #flick.displaySets()
         """
-        flick.removeUselessSetsTable()
-        flick.getFlickrSets()
+
+        #flick.displaySets()
+        #flick.getFlickrSets()
+
         flick.upload()
+
+        """
         flick.removeDeletedMedia()
         flick.createSets()
         flick.addTagsToUploadedPhotos()
