@@ -3,6 +3,8 @@ On branch nodb I (owidder) currently make a derivation of trickortweats script t
 * Set name is built by concatenating the subfolders
 * No sync. Just upload.
 
+The rest of this MD is the original text from trickortweat.
+
 
 flickr-uploader
 ===============
