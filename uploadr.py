@@ -369,38 +369,15 @@ class Uploadr:
                 print(str(sys.exc_info()))
             return False
 
-    def removeDeletedMedia( self ):
-        """ Remove files deleted at the local source
-        loop through database
-        check if file exists
-        if exists, continue
-        if not exists, delete photo from fickr
-        http://www.flickr.com/services/api/flickr.photos.delete.html
-        """
-
-        print("*****Removing deleted files*****")
-
-        if ( not self.checkToken() ):
-            self.authenticate()
-        con = lite.connect(DB_PATH)
-        con.text_factory = str
-
-        with con:
-            cur = con.cursor()
-            cur.execute("SELECT files_id, path FROM files")
-            rows = cur.fetchall()
-
-            for row in rows:
-                if( not os.path.isfile(row[1])):
-                    success = self.deleteFile(row, cur)
-        print("*****Completed deleted files*****")
-
     def upload( self ):
         """ upload
         """
 
         print("*****Uploading files*****")
 
+        allSets = self.readAllSets();
+
+        termCtr = 0
 
         for dirpath, dirnames, filenames in os.walk( FILES_DIR, followlinks=True):
             if ('@' in dirpath) or ('_f-' in dirpath):
@@ -413,15 +390,15 @@ class Uploadr:
 
             setname = "-".join(parts)
             if (setname.__len__() > 1) and (filenames.__len__() > 0):
-                created = False
                 for filename in filenames:
                     ext = filename.lower().split(".")[-1]
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
-                        if not created:
+                        if not self.doesSetExist(setname, allSets):
                             print "Create set: " + setname
-                            created = True
-
                         print "Uplaod: " + dirpath + '/' + filename
+                        termCtr = termCtr + 1
+                        if termCtr > 0:
+                            return
 
             print "*****************"
 
@@ -459,81 +436,38 @@ class Uploadr:
         """
 
         success = False
-        con = lite.connect(DB_PATH)
-        con.text_factory = str
-        with con:
-            cur = con.cursor()
-            cur.execute("SELECT rowid,files_id,path,set_id,md5,tagged FROM files WHERE path = ?", (file,))
-            row = cur.fetchone()
-
-            if(row is None):
-                print("Uploading " + file + "...")
-                head, setName = os.path.split(os.path.dirname(file))
-                try:
-                    photo = ('photo', file, open(file,'rb').read())
-                    if args.title: # Replace
-                        FLICKR["title"] = args.title
-                    if args.description: # Replace
-                        FLICKR["description"] = args.description
-                    if args.tags: # Append
-                        FLICKR["tags"] += " " + args.tags + " "
-                    d = {
-                        "auth_token"    : str(self.token),
-                        "perms"         : str(self.perms),
-                        "title"         : str( FLICKR["title"] ),
-                        "description"   : str( FLICKR["description"] ),
-                        "tags"          : str( FLICKR["tags"] + "," + setName ),
-                        "is_public"     : str( FLICKR["is_public"] ),
-                        "is_friend"     : str( FLICKR["is_friend"] ),
-                        "is_family"     : str( FLICKR["is_family"] )
-                    }
-                    sig = self.signCall( d )
-                    d[ "api_sig" ] = sig
-                    d[ "api_key" ] = FLICKR[ "api_key" ]
-                    url = self.build_request(api.upload, d, (photo,))
-                    res = parse(urllib2.urlopen( url ))
-                    if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
-                        print("Successfully uploaded the file: " + file)
-                        # Add to set
-                        cur.execute('INSERT INTO files (files_id, path, md5, tagged) VALUES (?, ?, ?, 1)',(int(str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)), file, self.md5Checksum(file)))
-                        success = True
-                    else :
-                        print("A problem occurred while attempting to upload the file: " + file)
-                        try:
-                            print("Error: " + str( res.toxml() ))
-                        except:
-                            print("Error: " + str( res.toxml() ))
-                except:
-                    print(str(sys.exc_info()))
-            elif (MANAGE_CHANGES):
-                fileMd5 = self.md5Checksum(file)
-                if (fileMd5 != str(row[4])):
-                    self.replacePhoto(file, row[1], fileMd5, cur, con);
-            return success
-
-    def replacePhoto ( self, file, file_id, fileMd5, cur, con ) :
-        success = False
-        print("Replacing the file: " + file + "...")
+        print("Uploading " + file + "...")
+        head, setName = os.path.split(os.path.dirname(file))
         try:
             photo = ('photo', file, open(file,'rb').read())
-
+            if args.title: # Replace
+                FLICKR["title"] = args.title
+            if args.description: # Replace
+                FLICKR["description"] = args.description
+            if args.tags: # Append
+                FLICKR["tags"] += " " + args.tags + " "
             d = {
                 "auth_token"    : str(self.token),
-                "photo_id"     : str( file_id )
+                "perms"         : str(self.perms),
+                "title"         : str( FLICKR["title"] ),
+                "description"   : str( FLICKR["description"] ),
+                "tags"          : str( FLICKR["tags"] + "," + setName ),
+                "is_public"     : str( FLICKR["is_public"] ),
+                "is_friend"     : str( FLICKR["is_friend"] ),
+                "is_family"     : str( FLICKR["is_family"] )
             }
             sig = self.signCall( d )
             d[ "api_sig" ] = sig
             d[ "api_key" ] = FLICKR[ "api_key" ]
-            url = self.build_request(api.replace, d, (photo,))
+            url = self.build_request(api.upload, d, (photo,))
             res = parse(urllib2.urlopen( url ))
             if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
-                print("Successfully replaced the file: " + file)
+                print("Successfully uploaded the file: " + file)
                 # Add to set
-                cur.execute('UPDATE files SET md5 = ? WHERE files_id = ?',(fileMd5, file_id))
-                con.commit()
+                cur.execute('INSERT INTO files (files_id, path, md5, tagged) VALUES (?, ?, ?, 1)',(int(str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)), file, self.md5Checksum(file)))
                 success = True
             else :
-                print("A problem occurred while attempting to replace the file: " + file)
+                print("A problem occurred while attempting to upload the file: " + file)
                 try:
                     print("Error: " + str( res.toxml() ))
                 except:
@@ -542,58 +476,6 @@ class Uploadr:
             print(str(sys.exc_info()))
 
         return success
-
-    def deleteFile( self, file, cur ):
-        success = False
-        print("Deleting file: " + str(file[1]))
-
-        try:
-            d = {
-                "auth_token"      : str(self.token),
-                "perms"           : str(self.perms),
-                "format"          : "rest",
-                "method"          : "flickr.photos.delete",
-                "photo_id"        : str( file[0] ),
-                "format"          : "json",
-                "nojsoncallback"  : "1"
-            }
-            sig = self.signCall( d )
-            url = self.urlGen( api.rest, d, sig )
-            res = self.getResponse( url )
-            if ( self.isGood( res ) ):
-
-                # Find out if the file is the last item in a set, if so, remove the set from the local db
-                cur.execute("SELECT set_id FROM files WHERE files_id = ?", (file[0],))
-                row = cur.fetchone()
-                cur.execute("SELECT set_id FROM files WHERE set_id = ?", (row[0],))
-                rows = cur.fetchall()
-                if(len(rows) == 1):
-                    print("File is the last of the set, deleting the set ID: " + str(row[0]))
-                    cur.execute("DELETE FROM sets WHERE set_id = ?", (row[0],))
-
-                # Delete file record from the local db
-                cur.execute("DELETE FROM files WHERE files_id = ?", (file[0],))
-                print("Successful deletion.")
-                success = True
-            else :
-                if( res['code'] == 1 ):
-                    # File already removed from Flicker
-                    cur.execute("DELETE FROM files WHERE files_id = ?", (file[0],))
-                else :
-                    self.reportError( res )
-        except:
-            # If you get 'attempt to write a readonly database', set 'admin' as owner of the DB file (fickerdb) and 'users' as group
-            print(str(sys.exc_info()))
-        return success
-
-    def logSetCreation( self, setId, setName, primaryPhotoId, cur, con):
-        print("adding set to log: " + str(setName))
-
-        success = False
-        cur.execute("INSERT INTO sets (set_id, name, primary_photo_id) VALUES (?,?,?)", (setId,setName,primaryPhotoId))
-        cur.execute("UPDATE files SET set_id = ? WHERE files_id = ?", (setId, primaryPhotoId))
-        con.commit()
-        return True
 
     def build_request(self, theurl, fields, files, txheaders=None):
         """
@@ -682,37 +564,6 @@ class Uploadr:
             print("Last check: " + str( time.asctime(time.localtime())))
             time.sleep( SLEEP_TIME )
 
-    def createSets( self ):
-        print('*****Creating Sets*****')
-
-        con = lite.connect(DB_PATH)
-        con.text_factory = str
-        with con:
-
-            cur = con.cursor()
-            cur.execute("SELECT files_id, path, set_id FROM files")
-
-            files = cur.fetchall()
-
-            for row in files:
-                head, setName = os.path.split(os.path.dirname(row[1]))
-                newSetCreated = False
-
-                cur.execute("SELECT set_id, name FROM sets WHERE name = ?", (setName,))
-
-                set = cur.fetchone()
-
-                if set == None:
-                    setId = self.createSet(setName, row[0], cur, con)
-                    print("Created the set: " + setName)
-                    newSetCreated = True
-                else :
-                    setId = set[0]
-
-                if row[2] == None and newSetCreated == False :
-                    self.addFileToSet(setId, row, cur)
-        print('*****Completed creating sets*****')
-
     def addFileToSet( self, setId, file, cur):
         try:
             d = {
@@ -746,7 +597,7 @@ class Uploadr:
         except:
             print(str(sys.exc_info()))
 
-    def createSet( self, setName, primaryPhotoId, cur, con):
+    def createSet( self, setName, primaryPhotoId):
         print("Creating new set: " + str(setName))
 
         try:
@@ -767,7 +618,6 @@ class Uploadr:
             url = self.urlGen( api.rest, d, sig )
             res = self.getResponse( url )
             if ( self.isGood( res ) ):
-                self.logSetCreation( res["photoset"]["id"], setName, primaryPhotoId, cur, con )
                 return res["photoset"]["id"]
             else :
                 print(d)
@@ -775,25 +625,6 @@ class Uploadr:
         except:
             print(str(sys.exc_info()))
         return False
-
-    def setupDB ( self ):
-        print("Setting up the database: " + DB_PATH)
-        con = None
-        try:
-            con = lite.connect(DB_PATH)
-            con.text_factory = str
-            cur = con.cursor()
-            cur.execute('create table if not exists files (files_id int, path text, set_id int, md5 text, tagged int)')
-            cur.execute('create table if not exists sets (set_id int, name text, primary_photo_id INTEGER)')
-            con.commit()
-            con.close()
-        except lite.Error as e:
-            print("Error: %s" % e.args[0])
-            if con != None:
-                con.close()
-            sys.exit(1)
-        finally:
-            print("Completed database setup")
 
     def md5Checksum(self, filePath):
         with open(filePath, 'rb') as fh:
@@ -868,11 +699,35 @@ class Uploadr:
             for row in allsets:
                 print("Set: " + str(row[0]) + "(" + row[1] + ")")
 
+    """
+    Print all set names from the result
+    of 'flickr.photosets.getList'
+    """
+    def printAllSetNames(self, allSetsJson):
+        for s in allSetsJson['photosets']['photoset']:
+            print s['title']['_content']
+
+    """
+    Helper method
+    Return True if if 'setname' exists in the JSON structure 'allSetsJson'
+    as returned from 'flickr.photosets.getList'
+    """
+    def doesSetExist(self, setname, allSetsJson):
+        itExists = False
+
+        for s in allSetsJson['photosets']['photoset']:
+            if s['title']['_content'] == setname:
+                itExists = True
+                break
+
+        return itExists
+
     # Get sets from Flickr
-    def getFlickrSets(self):
-        print('*****Adding Flickr Sets to DB*****')
-        con = lite.connect(DB_PATH)
-        con.text_factory = str
+    def readAllSets(self):
+        """ 
+        Read all sets from Flickr
+        """
+
         try:
             d = {
                 "auth_token"          : str(self.token),
@@ -882,26 +737,15 @@ class Uploadr:
                 "method"              : "flickr.photosets.getList"
             }
             url = self.urlGen(api.rest, d, self.signCall(d))
-            res = self.getResponse(url)
-            if (self.isGood(res)):
-                cur = con.cursor()
-                for row in res['photosets']['photoset']:
-                    setId = row['id']
-                    setName = row['title']['_content']
-                    primaryPhotoId = row['primary']
-                    cur.execute("SELECT set_id FROM sets WHERE set_id = '" + setId + "'")
-                    foundSets = cur.fetchone()
-                    if foundSets == None:
-                        print("   Adding set ", setId, setName, primaryPhotoId)
-                        cur.execute("INSERT INTO sets (set_id, name, primary_photo_id) VALUES (?,?,?)", (setId, setName, primaryPhotoId))
-                con.commit()
-                con.close()
-            else:
-                print(d)
-                self.reportError(res)
+            allSets = self.getResponse(url)
         except:
             print(str(sys.exc_info()))
-        print('*****Completed adding Flickr Sets to DB*****')
+
+        return allSets
+
+####################################################################
+####################################################################
+####################################################################
 
 print("--------- Start time: " + time.strftime("%c") + " ---------");
 if __name__ == "__main__":
@@ -936,25 +780,19 @@ if __name__ == "__main__":
         print("Please enter an API key and secret in the script file (see README).")
         sys.exit()
 
-    #flick.setupDB()
-
     if args.daemon:
         #flick.run()
         dummy = 1
     else:
-        """
         if ( not flick.checkToken() ):
             flick.authenticate()
-        """
 
-        #flick.displaySets()
-        #flick.getFlickrSets()
+        #allSets = flick.readAllSets()
+        #flick.printAllSetNames(allSets)
 
         flick.upload()
 
         """
-        flick.removeDeletedMedia()
-        flick.createSets()
         flick.addTagsToUploadedPhotos()
         """
 print("--------- End time: " + time.strftime("%c") + " ---------");
