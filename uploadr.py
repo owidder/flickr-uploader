@@ -395,9 +395,10 @@ class Uploadr:
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
                         if not self.doesSetExist(setname, allSets):
                             print "Create set: " + setname
+                            allSets = self.readAllSets();
                         print "Uplaod: " + dirpath + '/' + filename
                         termCtr = termCtr + 1
-                        if termCtr > 0:
+                        if termCtr > 1000:
                             return
 
             print "*****************"
