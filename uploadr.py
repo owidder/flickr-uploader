@@ -393,12 +393,14 @@ class Uploadr:
                 for filename in filenames:
                     ext = filename.lower().split(".")[-1]
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
+                        filePath = dirpath + '/' + filename
                         if not self.doesSetExist(setname, allSets):
-                            print "Create set: " + setname
-                            allSets = self.readAllSets();
-                        print "Uplaod: " + dirpath + '/' + filename
+                            self.uploadFile(filePath, setname)
+                        else:
+                            self.uploadFile(filePath)
+                        allSets = self.readAllSets();
                         termCtr = termCtr + 1
-                        if termCtr > 1000:
+                        if termCtr > 1:
                             return
 
             print "*****************"
@@ -432,7 +434,7 @@ class Uploadr:
         print("*****Completed uploading files*****")
         """
 
-    def uploadFile( self, file ):
+    def uploadFile( self, file, setname ):
         """ uploadFile
         """
 
@@ -465,7 +467,12 @@ class Uploadr:
             if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
                 print("Successfully uploaded the file: " + file)
                 # Add to set
-                cur.execute('INSERT INTO files (files_id, path, md5, tagged) VALUES (?, ?, ?, 1)',(int(str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)), file, self.md5Checksum(file)))
+                fileId = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
+                os.rename(file, "_f-" + file + "-" + fileId)
+
+                if setname.__len__() > 0:
+                    self.createSet(stename, fileId)
+
                 success = True
             else :
                 print("A problem occurred while attempting to upload the file: " + file)
