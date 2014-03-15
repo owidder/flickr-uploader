@@ -370,7 +370,7 @@ class Uploadr:
             return False
 
     def upload( self ):
-        """ upload
+        """ upload all files not beginning with '_f-'
         """
 
         print("*****Uploading files*****")
@@ -393,56 +393,35 @@ class Uploadr:
                 for filename in filenames:
                     ext = filename.lower().split(".")[-1]
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
-                        filePath = dirpath + '/' + filename
-                        if not self.doesSetExist(setname, allSets):
-                            self.uploadFile(filePath, setname)
-                        else:
-                            self.uploadFile(filePath)
-                        allSets = self.readAllSets();
+                        fileid = self.uploadFile(dirpath, filename, setname)
+                        if fileid != None:
+                            setid = self.getPhotoSetId(setname, allSets)
+                            if setid == None:
+                                self.createSet(setname, fileid)
+                                allSets = self.readAllSets();
+                            else:
+                                self.addFileToSet(setid, fileid)
+
                         termCtr = termCtr + 1
-                        if termCtr > 1:
+                        if termCtr >= int(args.maxnumber):
                             return
 
             print "*****************"
 
-            """
-            for curr_dir in EXCLUDED_FOLDERS:
-                if curr_dir in dirnames:
-                    dirnames.remove(curr_dir)
-            for f in filenames :
-                ext = f.lower().split(".")[-1]
-                if (not f.startswith("_f-")) and (not dirpath.startswith("_f-")) and (ext in ALLOWED_EXT):
-                    fileSize = os.path.getsize( dirpath + "/" + f )
-                    if (fileSize < FILE_MAX_SIZE):
-                        print(dirpath + "/" + f)
-            """
 
-        """
-        allMedia = self.grabNewFiles()
-        print("Found " + str(len(allMedia)) + " files")
-        coun = 0;
-        for i, file in enumerate( allMedia ):
-            success = self.uploadFile( file )
-            if args.drip_feed and success and i != len( newFiles )-1:
-                print("Waiting " + str(DRIP_TIME) + " seconds before next upload")
-                time.sleep( DRIP_TIME )
-            coun = coun + 1;
-            if (coun%100 == 0):
-                print("   " + str(coun) + " files processed (uploaded or md5ed)")
-        if (coun%100 > 0):
-            print("   " + str(coun) + " files processed (uploaded or md5ed)")
-        print("*****Completed uploading files*****")
-        """
+    def uploadFile( self, dirpath, filename, setname ):
+        """ uploads the file with the given path and name
+            dirpath: path to the file (without the name)
+            filename: name of the file (without the path)
+            setname: name of the set the file belongs to (added as tag)
 
-    def uploadFile( self, file, setname ):
-        """ uploadFile
+            return: id of the file
         """
-
-        success = False
-        print("Uploading " + file + "...")
-        head, setName = os.path.split(os.path.dirname(file))
+        filepath = dirpath + '/' + filename
+        print("Uploading " + filepath + "...")
+        fileid = None
         try:
-            photo = ('photo', file, open(file,'rb').read())
+            photo = ('photo', filepath, open(filepath, 'rb').read())
             if args.title: # Replace
                 FLICKR["title"] = args.title
             if args.description: # Replace
@@ -454,7 +433,7 @@ class Uploadr:
                 "perms"         : str(self.perms),
                 "title"         : str( FLICKR["title"] ),
                 "description"   : str( FLICKR["description"] ),
-                "tags"          : str( FLICKR["tags"] + "," + setName ),
+                "tags"          : str( FLICKR["tags"] + "," + setname ),
                 "is_public"     : str( FLICKR["is_public"] ),
                 "is_friend"     : str( FLICKR["is_friend"] ),
                 "is_family"     : str( FLICKR["is_family"] )
@@ -464,18 +443,13 @@ class Uploadr:
             d[ "api_key" ] = FLICKR[ "api_key" ]
             url = self.build_request(api.upload, d, (photo,))
             res = parse(urllib2.urlopen( url ))
+            fileidStr = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
             if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
-                print("Successfully uploaded the file: " + file)
-                # Add to set
-                fileId = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
-                os.rename(file, "_f-" + file + "-" + fileId)
-
-                if setname.__len__() > 0:
-                    self.createSet(stename, fileId)
-
-                success = True
+                print("Successfully uploaded the file: " + filepath)
+                (name, ext) = filename.split(".")
+                os.rename(filepath, dirpath + "/_f-" + name + "-" + fileidStr + "." + ext)
             else :
-                print("A problem occurred while attempting to upload the file: " + file)
+                print("A problem occurred while attempting to upload the file: " + filepath)
                 try:
                     print("Error: " + str( res.toxml() ))
                 except:
@@ -483,7 +457,7 @@ class Uploadr:
         except:
             print(str(sys.exc_info()))
 
-        return success
+        return int(fileidStr)
 
     def build_request(self, theurl, fields, files, txheaders=None):
         """
@@ -572,7 +546,9 @@ class Uploadr:
             print("Last check: " + str( time.asctime(time.localtime())))
             time.sleep( SLEEP_TIME )
 
-    def addFileToSet( self, setId, file, cur):
+    def addFileToSet( self, setId, fileId):
+        """ add file with the given id to the set with the given id
+        """
         try:
             d = {
                 "auth_token"          : str(self.token),
@@ -581,27 +557,12 @@ class Uploadr:
                 "nojsoncallback"      : "1",
                 "method"              : "flickr.photosets.addPhoto",
                 "photoset_id"         : str( setId ),
-                "photo_id"            : str( file[0] )
+                "photo_id"            : str( fileId )
             }
             sig = self.signCall( d )
             url = self.urlGen( api.rest, d, sig )
 
             res = self.getResponse( url )
-            if ( self.isGood( res ) ):
-
-                print("Successfully added file " + str(file[1]) + " to its set.")
-
-                cur.execute("UPDATE files SET set_id = ? WHERE files_id = ?", (setId, file[0]))
-
-            else :
-                if ( res['code'] == 1 ) :
-                    print("Photoset not found, creating new set...")
-                    head, setName = os.path.split(os.path.dirname(file[1]))
-                    con = lite.connect(DB_PATH)
-                    con.text_factory = str
-                    self.createSet( setName, file[0], cur, con)
-                else :
-                    self.reportError( res )
         except:
             print(str(sys.exc_info()))
 
@@ -717,18 +678,18 @@ class Uploadr:
 
     """
     Helper method
-    Return True if if 'setname' exists in the JSON structure 'allSetsJson'
+    Return the id of a photoset if it exists in the JSON structure 'allSetsJson'
     as returned from 'flickr.photosets.getList'
     """
-    def doesSetExist(self, setname, allSetsJson):
-        itExists = False
+    def getPhotoSetId(self, setname, allSetsJson):
+        id = None
 
         for s in allSetsJson['photosets']['photoset']:
             if s['title']['_content'] == setname:
-                itExists = True
+                id = s['id']
                 break
 
-        return itExists
+        return id
 
     # Get sets from Flickr
     def readAllSets(self):
@@ -776,6 +737,8 @@ if __name__ == "__main__":
         help='Space-separated tags for uploaded files')
     parser.add_argument('-r', '--drip-feed',   action='store_true',
         help='Wait a bit between uploading individual files')
+    parser.add_argument('-n', '--maxnumber',   action='store',
+        help='Max. number of files to upload')
     args = parser.parse_args()
 
     flick = Uploadr()
