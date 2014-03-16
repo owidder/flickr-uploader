@@ -82,6 +82,28 @@ import errno
 from sys import stdout
 import itertools
 
+exitSignalCaught = False
+isInSleepMode = False
+isUploading = False
+import signal
+def handleExitSignal(signal, frame):
+    exitSignalCaught = True
+    print "Exit signal caught"
+    sys.stdout.flush()
+    if(isInSleepMode):
+        sys.exit(0)
+
+signal.signal(signal.SIGHUP, handleExitSignal)
+signal.signal(signal.SIGABRT, handleExitSignal)
+signal.signal(signal.SIGILL, handleExitSignal)
+signal.signal(signal.SIGSEGV, handleExitSignal)
+signal.signal(signal.SIGTERM, handleExitSignal)
+
+
+def printToStdout(text):
+    print text
+    sys.stdout.flush()
+
 #
 ##
 ##  Items you will want to change
@@ -208,7 +230,7 @@ class Uploadr:
         """ Authenticate user so we can upload files
         """
 
-        print("Getting new token")
+        printToStdout("Getting new token")
         self.getFrob()
         self.getAuthKey()
         self.getToken()
@@ -242,7 +264,7 @@ class Uploadr:
             else:
                 self.reportError( response )
         except:
-            print("Error: cannot get frob:" + str( sys.exc_info() ))
+            printToStdout("Error: cannot get frob:" + str( sys.exc_info() ))
 
     def getAuthKey( self ):
         """
@@ -257,16 +279,16 @@ class Uploadr:
         ans = ""
         try:
             webbrowser.open( url )
-            print("Copy-paste following URL into a web browser and follow instructions:")
-            print(url)
+            printToStdout("Copy-paste following URL into a web browser and follow instructions:")
+            printToStdout(url)
             ans = raw_input("Have you authenticated this application? (Y/N): ")
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
         if ( ans.lower() == "n" ):
-            print("You need to allow this program to access your Flickr site.")
-            print("Copy-paste following URL into a web browser and follow instructions:")
-            print(url)
-            print("After you have allowed access restart uploadr.py")
+            printToStdout("You need to allow this program to access your Flickr site.")
+            printToStdout("Copy-paste following URL into a web browser and follow instructions:")
+            printToStdout(url)
+            printToStdout("After you have allowed access restart uploadr.py")
             sys.exit()
 
     def getToken( self ):
@@ -307,7 +329,7 @@ class Uploadr:
             else :
                 self.reportError( res )
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
 
     def getCachedToken( self ):
         """
@@ -327,7 +349,7 @@ class Uploadr:
         try:
             open( self.TOKEN_FILE , "w").write( str(self.token) )
         except:
-            print("Issue writing token to local cache ", str(sys.exc_info()))
+            printToStdout("Issue writing token to local cache ", str(sys.exc_info()))
 
     def checkToken( self ):
         """
@@ -366,14 +388,14 @@ class Uploadr:
                 else :
                     self.reportError( res )
             except:
-                print(str(sys.exc_info()))
+                printToStdout(str(sys.exc_info()))
             return False
 
     def upload( self ):
         """ upload all files not beginning with '_f-'
         """
 
-        print("*****Uploading files*****")
+        printToStdout("*****Uploading files*****")
 
         allSets = self.readAllSets();
 
@@ -391,6 +413,8 @@ class Uploadr:
             setname = "-".join(parts)
             if (setname.__len__() > 1) and (filenames.__len__() > 0):
                 for filename in filenames:
+                    if exitSignalCaught:
+                        return
                     ext = filename.lower().split(".")[-1]
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
                         fileid = self.uploadFile(dirpath, filename, setname)
@@ -403,8 +427,16 @@ class Uploadr:
                                 self.addFileToSet(setid, fileid)
 
                         termCtr = termCtr + 1
-                        if termCtr >= int(args.maxnumber):
-                            return
+                        if args.maxnumber != None:
+                            if termCtr >= int(args.maxnumber):
+                                return
+
+                        if args.driptime != None:
+                            print "Sleeping for " + args.driptime + " seconds"
+                            sys.stdout.flush()
+                            isInSleepMode = True
+                            time.sleep(int(args.driptime))
+                            isInSleepMode = False
 
             print "*****************"
 
@@ -418,7 +450,7 @@ class Uploadr:
             return: id of the file
         """
         filepath = dirpath + '/' + filename
-        print("Uploading " + filepath + "...")
+        printToStdout("Uploading " + filepath + "...")
         fileid = None
         try:
             photo = ('photo', filepath, open(filepath, 'rb').read())
@@ -445,17 +477,19 @@ class Uploadr:
             res = parse(urllib2.urlopen( url ))
             fileidStr = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
             if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
-                print("Successfully uploaded the file: " + filepath)
+                printToStdout("Successfully uploaded the file: " + filepath)
                 (name, ext) = filename.split(".")
-                os.rename(filepath, dirpath + "/_f-" + name + "-" + fileidStr + "." + ext)
+                newpath = dirpath + "/_f-" + name + "-" + fileidStr + "." + ext
+                os.rename(filepath, newpath)
+                printToStdout("Renamed to: " + newpath)
             else :
-                print("A problem occurred while attempting to upload the file: " + filepath)
+                printToStdout("A problem occurred while attempting to upload the file: " + filepath)
                 try:
-                    print("Error: " + str( res.toxml() ))
+                    printToStdout("Error: " + str( res.toxml() ))
                 except:
-                    print("Error: " + str( res.toxml() ))
+                    printToStdout("Error: " + str( res.toxml() ))
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
 
         return int(fileidStr)
 
@@ -520,9 +554,9 @@ class Uploadr:
         """
 
         try:
-            print("Error: " + str( res['code'] + " " + res['message'] ))
+            printToStdout("Error: " + str( res['code'] + " " + res['message'] ))
         except:
-            print("Error: " + str( res ))
+            printToStdout("Error: " + str( res ))
 
     def getResponse( self, url ):
         """
@@ -532,9 +566,9 @@ class Uploadr:
         try:
             res = urllib2.urlopen( url ).read()
         except urllib2.HTTPError as e:
-            print(e.code)
+            printToStdout(e.code)
         except urllib2.URLError as e:
-            print(e.args)
+            printToStdout(e.args)
         return json.loads(res)
 
     def run( self ):
@@ -543,7 +577,7 @@ class Uploadr:
 
         while ( True ):
             self.upload()
-            print("Last check: " + str( time.asctime(time.localtime())))
+            printToStdout("Last check: " + str( time.asctime(time.localtime())))
             time.sleep( SLEEP_TIME )
 
     def addFileToSet( self, setId, fileId):
@@ -564,10 +598,10 @@ class Uploadr:
 
             res = self.getResponse( url )
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
 
     def createSet( self, setName, primaryPhotoId):
-        print("Creating new set: " + str(setName))
+        printToStdout("Creating new set: " + str(setName))
 
         try:
             d = {
@@ -589,10 +623,10 @@ class Uploadr:
             if ( self.isGood( res ) ):
                 return res["photoset"]["id"]
             else :
-                print(d)
+                printToStdout(d)
                 self.reportError( res )
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
         return False
 
     def md5Checksum(self, filePath):
@@ -606,7 +640,7 @@ class Uploadr:
             return m.hexdigest()
 
     def addTagsToUploadedPhotos ( self ) :
-        print('*****Adding tags to existing photos*****')
+        printToStdout('*****Adding tags to existing photos*****')
 
         con = lite.connect(DB_PATH)
         con.text_factory = str
@@ -625,12 +659,12 @@ class Uploadr:
                     status = self.addTagToPhoto(row, setName, cur, con)
 
                     if status == False:
-                        print("Error: cannot add tag to file: " + file[1])
+                        printToStdout("Error: cannot add tag to file: " + file[1])
 
-        print('*****Completed adding tags*****')
+        printToStdout('*****Completed adding tags*****')
 
     def addTagToPhoto(self, file, tagName, cur, con) :
-        print("Adding tag " + tagName + " to photo: " + str(file[1]) + " (" + str(file[0]) + ")")
+        printToStdout("Adding tag " + tagName + " to photo: " + str(file[1]) + " (" + str(file[0]) + ")")
 
         try:
             d = {
@@ -651,10 +685,10 @@ class Uploadr:
                 con.commit()
                 return True
             else :
-                print(d)
+                printToStdout(d)
                 self.reportError( res )
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
         return False
 
     # Display Sets
@@ -666,7 +700,7 @@ class Uploadr:
             cur.execute("SELECT set_id, name FROM sets")
             allsets = cur.fetchall()
             for row in allsets:
-                print("Set: " + str(row[0]) + "(" + row[1] + ")")
+                printToStdout("Set: " + str(row[0]) + "(" + row[1] + ")")
 
     """
     Print all set names from the result
@@ -708,7 +742,7 @@ class Uploadr:
             url = self.urlGen(api.rest, d, self.signCall(d))
             allSets = self.getResponse(url)
         except:
-            print(str(sys.exc_info()))
+            printToStdout(str(sys.exc_info()))
 
         return allSets
 
@@ -716,7 +750,7 @@ class Uploadr:
 ####################################################################
 ####################################################################
 
-print("--------- Start time: " + time.strftime("%c") + " ---------");
+printToStdout("--------- Start time: " + time.strftime("%c") + " ---------");
 if __name__ == "__main__":
     # Ensure that only once instance of this script is running
     f = open ('lock', 'w')
@@ -735,7 +769,7 @@ if __name__ == "__main__":
         help='Description for uploaded files')
     parser.add_argument('-t', '--tags',        action='store',
         help='Space-separated tags for uploaded files')
-    parser.add_argument('-r', '--drip-feed',   action='store_true',
+    parser.add_argument('-r', '--driptime',   action='store',
         help='Wait a bit between uploading individual files')
     parser.add_argument('-n', '--maxnumber',   action='store',
         help='Max. number of files to upload')
@@ -744,26 +778,19 @@ if __name__ == "__main__":
     flick = Uploadr()
 
     if FILES_DIR == "":
-        print("Please configure the name of the folder in the script with media available to sync with Flickr.")
+        printToStdout("Please configure the name of the folder in the script with media available to sync with Flickr.")
         sys.exit()
 
     if FLICKR["api_key"] == "" or FLICKR["secret"] == "":
-        print("Please enter an API key and secret in the script file (see README).")
+        printToStdout("Please enter an API key and secret in the script file (see README).")
         sys.exit()
 
     if args.daemon:
-        #flick.run()
-        dummy = 1
+        flick.run()
     else:
         if ( not flick.checkToken() ):
             flick.authenticate()
 
-        #allSets = flick.readAllSets()
-        #flick.printAllSetNames(allSets)
-
         flick.upload()
 
-        """
-        flick.addTagsToUploadedPhotos()
-        """
-print("--------- End time: " + time.strftime("%c") + " ---------");
+printToStdout("--------- End time: " + time.strftime("%c") + " ---------");
