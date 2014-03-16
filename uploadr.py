@@ -85,8 +85,8 @@ import itertools
 LOG_FILE_NAME = "log.txt"
 
 def printToStdout(text):
-    logfile = open(LOG_FILE_NAME, "w+")
-    logfile.write(text)
+    logfile = open(LOG_FILE_NAME, "a")
+    logfile.write(text + "\n")
     print time.ctime() + ": " + text
     sys.stdout.flush()
 
@@ -132,8 +132,8 @@ def initScript():
     markUploadingEnded()
 
 def stopScript():
-    markEndRunning()
     printToStdout("Bye!")
+    markEndRunning()
     sys.exit(0)
 
 import signal
