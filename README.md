@@ -1,8 +1,4 @@
-On branch nodb I (owidder) currently make a derivation of trickortweats script to fulfill my needs:
-* No DB used. Uplaod all files not starting with '_f-'. After upload they are renamed to '_f-old name'
-* Set name is built by concatenating the subfolders
-* No sync. Just upload.
-
+On branch no-sync I (owidder) currently make a derivation of trickortweats script to fulfill my needs
 The rest of this MD is the original text from trickortweat.
 
 
