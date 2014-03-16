@@ -82,16 +82,61 @@ import errno
 from sys import stdout
 import itertools
 
-exitSignalCaught = False
-isInSleepMode = False
-isUploading = False
+def printToStdout(text):
+    print time.ctime() +": " + text
+    sys.stdout.flush()
+
+UPLOADING_MARKER_FILE = "uploading.txt"
+EXIT_SIGNAL_MARKER_FILE = "exit.txt"
+
+def isUploading():
+    return os.path.isfile(UPLOADING_MARKER_FILE)
+
+def markUploadingStarted(text):
+    f = open(UPLOADING_MARKER_FILE, "w+")
+    f.write(text)
+
+def markUploadingEnded():
+    if(isUploading()):
+        os.remove(UPLOADING_MARKER_FILE)
+
+def markExit(text):
+    f = open(EXIT_SIGNAL_MARKER_FILE, "w+")
+    f.write(text)
+
+def isExitMarked():
+    return os.path.isfile(EXIT_SIGNAL_MARKER_FILE)
+
+def clearExitMark():
+    if(isExitMarked()):
+        os.remove(EXIT_SIGNAL_MARKER_FILE)
+
+def initScript():
+    printToStdout("Start")
+    clearExitMark()
+    markUploadingEnded()
+    # Ensure that only once instance of this script is running
+    f = open ('lock', 'w')
+    try: fcntl.lockf (f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except IOError as e:
+        if e.errno == errno.EAGAIN:
+            sys.stderr.write('[%s] Script already running.\n' % time.strftime ('%c') )
+            sys.exit(-1)
+        raise
+
+def stopScript():
+    clearExitMark()
+    markUploadingEnded()
+    printToStdout("Bye!")
+    sys.exit(0)
+
 import signal
 def handleExitSignal(signal, frame):
-    exitSignalCaught = True
-    print "Exit signal caught"
+    markExit(str(signal))
+    printToStdout("Exit signal caught")
     sys.stdout.flush()
-    if(isInSleepMode):
-        sys.exit(0)
+    if(not isUploading()):
+        stopScript()
 
 signal.signal(signal.SIGHUP, handleExitSignal)
 signal.signal(signal.SIGABRT, handleExitSignal)
@@ -100,9 +145,6 @@ signal.signal(signal.SIGSEGV, handleExitSignal)
 signal.signal(signal.SIGTERM, handleExitSignal)
 
 
-def printToStdout(text):
-    print text
-    sys.stdout.flush()
 
 #
 ##
@@ -395,7 +437,7 @@ class Uploadr:
         """ upload all files not beginning with '_f-'
         """
 
-        printToStdout("*****Uploading files*****")
+        printToStdout("Scanning for files")
 
         allSets = self.readAllSets();
 
@@ -403,7 +445,6 @@ class Uploadr:
 
         for dirpath, dirnames, filenames in os.walk( FILES_DIR, followlinks=True):
             if ('@' in dirpath) or ('_f-' in dirpath):
-                # print "--- Skipped: " + dirpath
                 continue
 
             startindex = FILES_DIR.__len__()
@@ -413,18 +454,22 @@ class Uploadr:
             setname = "-".join(parts)
             if (setname.__len__() > 1) and (filenames.__len__() > 0):
                 for filename in filenames:
-                    if exitSignalCaught:
-                        return
                     ext = filename.lower().split(".")[-1]
                     if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
+                        markUploadingStarted(dirpath + "/" + filename)
                         fileid = self.uploadFile(dirpath, filename, setname)
-                        if fileid != None:
+                        if fileid > 0:
                             setid = self.getPhotoSetId(setname, allSets)
                             if setid == None:
                                 self.createSet(setname, fileid)
                                 allSets = self.readAllSets();
                             else:
+                                printToStdout("Add to set: " + setname)
                                 self.addFileToSet(setid, fileid)
+                        markUploadingEnded()
+
+                        if isExitMarked():
+                            return
 
                         termCtr = termCtr + 1
                         if args.maxnumber != None:
@@ -432,13 +477,9 @@ class Uploadr:
                                 return
 
                         if args.driptime != None:
-                            print "Sleeping for " + args.driptime + " seconds"
-                            sys.stdout.flush()
-                            isInSleepMode = True
+                            printToStdout("****************** Sleeping for " + args.driptime + " seconds *******************")
                             time.sleep(int(args.driptime))
-                            isInSleepMode = False
-
-            print "*****************"
+                            printToStdout("****************** BINGBINGBING *******************")
 
 
     def uploadFile( self, dirpath, filename, setname ):
@@ -451,7 +492,7 @@ class Uploadr:
         """
         filepath = dirpath + '/' + filename
         printToStdout("Uploading " + filepath + "...")
-        fileid = None
+        fileidStr = "0"
         try:
             photo = ('photo', filepath, open(filepath, 'rb').read())
             if args.title: # Replace
@@ -708,7 +749,7 @@ class Uploadr:
     """
     def printAllSetNames(self, allSetsJson):
         for s in allSetsJson['photosets']['photoset']:
-            print s['title']['_content']
+            printToStdout(s['title']['_content'])
 
     """
     Helper method
@@ -750,16 +791,9 @@ class Uploadr:
 ####################################################################
 ####################################################################
 
-printToStdout("--------- Start time: " + time.strftime("%c") + " ---------");
+initScript()
+
 if __name__ == "__main__":
-    # Ensure that only once instance of this script is running
-    f = open ('lock', 'w')
-    try: fcntl.lockf (f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError as e:
-        if e.errno == errno.EAGAIN:
-            sys.stderr.write('[%s] Script already running.\n' % time.strftime ('%c') )
-            sys.exit(-1)
-        raise
     parser = argparse.ArgumentParser(description='Upload files to Flickr.')
     parser.add_argument('-d', '--daemon', action='store_true',
         help='Run forever as a daemon')
@@ -793,4 +827,4 @@ if __name__ == "__main__":
 
         flick.upload()
 
-printToStdout("--------- End time: " + time.strftime("%c") + " ---------");
+stopScript()
