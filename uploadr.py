@@ -82,9 +82,20 @@ import errno
 from sys import stdout
 import itertools
 
+LOG_FILE_NAME = "log.txt"
+
 def printToStdout(text):
-    print time.ctime() +": " + text
+    logfile = open(LOG_FILE_NAME, "w+")
+    logfile.write(text)
+    print time.ctime() + ": " + text
     sys.stdout.flush()
+
+def isRunning():
+    return os.path.isfile(LOG_FILE_NAME)
+
+def markEndRunning():
+    if isRunning():
+        os.rename(LOG_FILE_NAME, "log." + str(int(round(time.time() * 1000))) + ".txt") 
 
 UPLOADING_MARKER_FILE = "uploading.txt"
 EXIT_SIGNAL_MARKER_FILE = "exit.txt"
@@ -112,21 +123,16 @@ def clearExitMark():
         os.remove(EXIT_SIGNAL_MARKER_FILE)
 
 def initScript():
+    if isRunning():
+        print "already running"
+        sys.exit(-1)
+
     printToStdout("Start")
     clearExitMark()
     markUploadingEnded()
-    # Ensure that only once instance of this script is running
-    f = open ('lock', 'w')
-    try: fcntl.lockf (f, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except IOError as e:
-        if e.errno == errno.EAGAIN:
-            sys.stderr.write('[%s] Script already running.\n' % time.strftime ('%c') )
-            sys.exit(-1)
-        raise
 
 def stopScript():
-    clearExitMark()
-    markUploadingEnded()
+    markEndRunning()
     printToStdout("Bye!")
     sys.exit(0)
 
