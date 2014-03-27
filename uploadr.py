@@ -522,19 +522,27 @@ class Uploadr:
             d[ "api_key" ] = FLICKR[ "api_key" ]
             url = self.build_request(api.upload, d, (photo,))
             res = parse(urllib2.urlopen( url ))
-            fileidStr = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
-            if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
-                printToStdout("Successfully uploaded the file: " + filepath)
-                (name, ext) = filename.split(".")
-                newpath = dirpath + "/_f-" + name + "-" + fileidStr + "." + ext
-                os.rename(filepath, newpath)
-                printToStdout("Renamed to: " + newpath)
-            else :
+
+            ok = False
+            if (not (res.getElementsByTagName('photoid') is None) and res.getElementsByTagName('photoid').__len__() > 0): 
+                fileidStr = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
+                if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
+                    printToStdout("Successfully uploaded the file: " + filepath)
+                    parts = filename.split(".")
+                    name = parts[0]
+                    ext = parts[-1]
+                    newpath = dirpath + "/_f-" + name + "-" + fileidStr + "." + ext
+                    os.rename(filepath, newpath)
+                    printToStdout("Renamed to: " + newpath)
+                    ok = True
+
+            if not ok:
                 printToStdout("A problem occurred while attempting to upload the file: " + filepath)
                 try:
                     printToStdout("Error: " + str( res.toxml() ))
                 except:
                     printToStdout("Error: " + str( res.toxml() ))
+
         except:
             printToStdout(str(sys.exc_info()))
 
