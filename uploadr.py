@@ -443,14 +443,15 @@ class Uploadr:
         """ upload all files not beginning with '_f-'
         """
 
-        printToStdout("Scanning for files")
+        printToStdout("Scanning for files in " + FILES_DIR)
 
         allSets = self.readAllSets();
 
         termCtr = 0
 
         for dirpath, dirnames, filenames in os.walk( FILES_DIR, followlinks=True):
-            if ('@' in dirpath) or ('_f-' in dirpath):
+            # folders with '_f-' are already uplaoded
+            if ('@' in dirpath) or ('_f-' in dirpath) or ('_e-_e-' in dirpath):
                 continue
 
             startindex = FILES_DIR.__len__()
@@ -461,7 +462,9 @@ class Uploadr:
             if (setname.__len__() > 1) and (filenames.__len__() > 0):
                 for filename in filenames:
                     ext = filename.lower().split(".")[-1]
-                    if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT):
+                    # files with '_f-' are already uplaoded
+                    # files with '_e-_e-' have failed twice
+                    if (not filename.startswith("_f-")) and (ext in ALLOWED_EXT) and (not filename.startswith("_e-_e-")):
                         markUploadingStarted(dirpath + "/" + filename)
                         fileid = self.uploadFile(dirpath, filename, setname)
                         if fileid > 0:
@@ -528,6 +531,7 @@ class Uploadr:
                 fileidStr = str(res.getElementsByTagName('photoid')[0].firstChild.nodeValue)
                 if ( not res == "" and res.documentElement.attributes['stat'].value == "ok" ):
                     printToStdout("Successfully uploaded the file: " + filepath)
+                    # add '_f-' and ID to the filename
                     parts = filename.split(".")
                     name = parts[0]
                     ext = parts[-1]
@@ -538,10 +542,17 @@ class Uploadr:
 
             if not ok:
                 printToStdout("A problem occurred while attempting to upload the file: " + filepath)
+
                 try:
                     printToStdout("Error: " + str( res.toxml() ))
                 except:
                     printToStdout("Error: " + str( res.toxml() ))
+
+                # add "_e-" to the filename
+                # after the second "_e-" the file will not be uploaded again
+                newpath = dirpath + "/_e-" + filename
+                os.rename(filepath, newpath)
+                printToStdout("Renamed to: " + newpath)
 
         except:
             printToStdout(str(sys.exc_info()))

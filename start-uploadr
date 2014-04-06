@@ -1,0 +1,3 @@
+#!/bin/sh
+source /var/services/homes/admin/set-flickr-keys
+/var/services/homes/admin/uploadr.py -r=10 >> /volume1/Tomcat/uploadr/status.txt 2>&1
