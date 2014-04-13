@@ -4,4 +4,4 @@ nohup.out
 log*
 exit.txt
 uploading.txt
-
+*.save
