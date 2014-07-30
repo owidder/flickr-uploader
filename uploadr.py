@@ -124,7 +124,7 @@ def clearExitMark():
 
 def initScript():
     if isRunning():
-        print "already running"
+        printToStdout("already running")
         sys.exit(-1)
 
     printToStdout("Start")
